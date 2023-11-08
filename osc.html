@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="myChart"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let maxDataPoints = 10; // e.g., for last 60 seconds
+let ctx = document.getElementById('myChart').getContext('2d');
+let chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'Instantaneous Data',
+            data: [],
+            borderColor: 'rgba(75, 192, 192, 1)',
+            tension: 0.1
+        }]
+    }
+});
+
+function addData(chart, label, data) {
+  if (chart.data.labels.length >= maxDataPoints) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach((dataset) => {
+        dataset.data.shift();
+    });
+  }  
+  chart.data.labels.push(label);
+    chart.data.datasets.forEach((dataset) => {
+        dataset.data.push(data);
+    });
+
+    chart.update();
+}
+
+// Simulate receiving new data every second
+setInterval(() => {
+    let time = new Date();
+    let num = Math.random() * 100;
+    let value = num.toString().split('');
+    let intValue = parseInt(value.join(''));
+    addData(chart, time, intValue);
+}, 200);
+</script>
+
+</body>
+</html>
