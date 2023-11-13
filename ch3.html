@@ -1,0 +1,497 @@
+<html>
+  <head>
+    <title>Hyper-SHIELD Viewer v0.1.0</title>
+  </head>
+  <h1>Hyper-SHIELD Viewer</h1>
+  <style>
+	 h1 {
+		text-align: center;
+		font-size: 3vw;
+		background-color: gray;
+		}
+
+    .infotable {
+		  margin-left: auto;
+		  margin-right: auto;
+		  border:1px solid black;
+		  padding: 5px;
+		  text-align: center;
+	  }
+	  
+	.datetable {
+		  margin-left: auto;
+		  margin-right: auto;
+		  border:1px solid black;
+		  padding: 5px;
+		  text-align: center;
+	  }
+	
+	th, td{
+         border:1px solid black;
+         padding: 10px;
+     }
+
+    .pageimg {
+			display: block;
+			margin-left: auto;
+			margin-right: auto;
+		}
+	
+	.buttons  {
+		text-align: center;
+	}
+	
+	.sysstat {
+		text-align: center;
+	}
+	
+	.sendrcv {
+		text-align: center;
+	}
+	
+	.bullet {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+			text-align: center;
+        }
+		
+    .red {
+		background-color: red;
+	}
+	
+    .yellow {
+		background-color: yellow;
+    }
+	
+    .green {
+		background-color: green;
+    }
+	
+	.black {
+		background-color: black;
+	}
+
+  </style>
+  <body>
+    <!--img class="pageimg" src="Hyper-SHIELD.png" alt="Page Image" /-->
+
+	<br></br>
+
+    <table class="infotable">
+      <tr>
+        <th>Process</th>
+        <th>State</th>
+        <th>Status</th>
+        <th>Value</th>
+        <th>Comment</th>
+      </tr>
+      <tr>
+        <td>ADC-1</td>
+        <td> <div class="bullet" id="adc1state"></div> </td>
+        <td> <div class="bullet" id="adc1status"></div> </td>
+        <td id="adc1val"></td>
+        <td id="adc1err"></td>
+      </tr>
+      <tr>
+        <td>ADC-2</td>
+        <td> <div class="bullet" id="adc2state"></div> </td>
+        <td> <div class="bullet" id="adc2status"></div> </td>
+        <td id="adc2val"></td>
+        <td id="adc2err"></td>
+      </tr>
+      <tr>
+        <td>Battery</td>
+        <td> <div class="bullet" id="batterystate"></div> </td>
+        <td> <div class="bullet" id="batterystatus"></div> </td>
+        <td id="batteryval"></td>
+        <td id="batteryerr"></td>
+      </tr>
+    </table>
+	
+	<br></br>
+	
+	<table class="datetable">
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+      </tr>
+      <tr>
+        <td id="curdate"></td>
+        <td id="curtime"></td>
+      </tr>
+    </table>
+
+    <br></br>
+    
+	<div class="buttons">
+		<button id="read">Connect to Device</button>
+		<button id="start" disabled>Start</button >
+		<button id="stop" disabled>Stop</button>
+	</div>
+
+	<br></br>
+	
+	<div class="sysstat">
+	<label for="sysstat">System Status:</label>
+	<input type="text" id="sysstat" name="sysstat" size="100">
+	</div>
+	
+	<br></br>
+	
+	<div class="sendrcv">
+		<label for="sent">Sent:</label>
+		<input type="text" id="sent" name="sent" size="50">
+		<label for="received">Received:</label>
+		<input type="text" id="received" name="received" size="50">
+	</div>
+	
+	<br></br>
+	
+	<div class="container">
+		<canvas id="adcChart"></canvas>
+	</div>
+
+  </body>
+  
+  <script src="chart.min.js"></script>
+  <script>
+    var deviceName = 'HyperShield';
+    var bleService = '00001523-1212-efde-1523-785feabcd123';
+    var bleCharacteristic = '00001526-1212-efde-1523-785feabcd123';
+    var bluetoothDeviceDetected;
+    var gattCharacteristic;
+	var connectionstarted = false;
+	var curdate;
+	var curtime;
+	var adc1_value;
+	var adc2_value;
+	var battery_value;
+	var adc1statecolor;
+	var adc1statuscolor;
+	var adc2statecolor;
+	var adc2statuscolor;
+	var batterystatecolor;
+	var batterystatuscolor;
+	var adc1newstatecolor;
+	var adc1newstatuscolor;
+	var adc2newstatecolor;
+	var adc2newstatuscolor;
+	var batterynewstatecolor;
+	var batterynewstatuscolor;
+	var adc1bstate;
+    var adc1bstat;
+	var adc2bstate;
+	var adc2bstat;
+	var batterybstate;
+	var batterybstat;
+	var black = "black";
+	var green = "green";
+	var yellow = "yellow";
+	var red = "red";
+	
+	   //Set the timer interval and function call to update the system time and send it to the controller over bluetooth
+	setInterval(sendTimer, 1000);
+
+	   //Set up and run the chart
+	   let maxDataPoints = 100; // e.g., for last 60 seconds
+let ctx = document.getElementById('adcChart').getContext('2d');
+let chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'ADC 1',
+            data: [],
+            borderColor: 'rgba(75, 192, 192, 1)',
+            tension: 0.1
+        },{
+			label: 'ADC 2',
+            data: [],
+            borderColor: 'rgba(255,0,0,1)',
+            tension: 0.1
+		}]
+    }
+});
+
+function addData(chart, label, data, data2) {
+  if (chart.data.labels.length >= maxDataPoints) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach((dataset) => {
+        dataset.data.shift();
+    });
+  }  
+  chart.data.labels.push(label);
+    cnt = 1;
+    chart.data.datasets.forEach((dataset) => {
+		if (cnt == 1) {
+        	dataset.data.push(data);
+			cnt++
+		} else {
+			dataset.data.push(data2)
+		}
+    })
+
+    chart.update();
+}
+
+// Simulate receiving new data every second
+setInterval(() => {
+    let time = new Date();
+	let timestring = time.toLocaleTimeString();
+    let num = adc1_value;
+	let num2 = adc2_value;
+    //let value = num.toString().split('');
+    //let intValue = parseInt(value.join(''));
+    addData(chart, timestring, num, num2);
+	
+
+},1000);
+	
+	   //Initially set all bullets to Black
+	adc1bstate = document.getElementById("adc1state");
+    adc1bstat = document.getElementById("adc1status");
+	adc2bstate = document.getElementById("adc2state");
+	adc2bstat = document.getElementById("adc2status");
+	batterybstate = document.getElementById("batterystate");
+	batterybstat = document.getElementById("batterystatus");
+	adc1bstate = document.getElementById("adc1state");
+    adc1bstat = document.getElementById("adc1status");
+	adc2bstate = document.getElementById("adc2state");
+	adc2bstat = document.getElementById("adc2status");
+	batterybstate = document.getElementById("batterystate");
+	batterybstat = document.getElementById("batterystatus");
+	adc1newstatecolor = black;
+	adc1newstatuscolor = black;
+	adc2newstatecolor = black;
+	adc2newstatuscolor = black;
+	batterynewstatecolor = black;
+	batterynewstatuscolor = black;
+    adc1bstate.classList.add(black);
+	adc1bstat.classList.add(black);
+	adc2bstate.classList.add(black);
+	adc2bstat.classList.add(black);
+	batterybstate.classList.add(black);
+	batterybstat.classList.add(black);
+	adc1statecolor = black;
+	adc1statuscolor = black;
+	adc2statecolor = black;
+	adc2statuscolor = black;
+	batterystatecolor = black;
+	batterystatuscolor = black;
+	
+    document.querySelector('#read').addEventListener('click',function() {
+      if (isWebBluetoothEnabled()) { read(); }
+    });
+	
+	document.querySelector('#start').addEventListener('click',function() {
+      if (isWebBluetoothEnabled()) { start(); }
+    });
+	
+	document.querySelector('#stop').addEventListener('click',function() {
+      if (isWebBluetoothEnabled()) { stop(); }
+    });
+
+    function isWebBluetoothEnabled() {
+        if(!navigator.bluetooth) {
+        writesysstat("Web Bluetooth is Not Available");
+        return false;
+      }
+      return true;
+    }
+
+    function getDeviceInfo() {
+      let options = {
+        "filters": [
+          {"name": deviceName}],
+        "optionalServices": ["00001523-1212-efde-1523-785feabcd123", "00001526-1212-efde-1523-785feabcd123"],
+      }
+
+       writesysstat("Requesting BLE Device...");
+       return navigator.bluetooth.requestDevice(options) .then(device => {
+       bluetoothDeviceDetected = device;
+      }).catch(error => {
+        writesysstat('Request Bluetooth Error: ' + error);
+      });
+    }
+
+    function connectGATT() {
+      bluetoothDeviceDetected.gatt.connect();
+      if(bluetoothDeviceDetected.gatt.connected && gattCharacteristic) {
+        return Promise.resolve();
+      }
+
+      return bluetoothDeviceDetected.gatt.connect()
+      .then(server => {
+        writesysstat('Getting GATT Service...');
+        return server.getPrimaryService(bleService);
+      })
+      .then(service => {
+        writesysstat('Getting GATT Charastic...');
+        return service.getCharacteristic(bleCharacteristic);
+      })
+      .then(characteristic => {
+        gattCharacteristic = characteristic;
+        gattCharacteristic.addEventListener('characteristicvaluechanged', handleChangedValue);
+		
+		writesysstat("Connection Complete!");
+		connectionstarted = true;
+      });
+    }
+
+    function read() {
+      return (bluetoothDeviceDetected ? Promise.resolve() : getDeviceInfo())
+      .then(connectGATT)
+      .then(_ => {
+        writesysstat('Connected!!...');
+		
+		document.querySelector('#read').disabled = true;
+		document.querySelector('#start').disabled = false;
+        document.querySelector('#stop').disabled = true;
+      })
+
+      .catch(error => {
+        writesysstat('Waiting for Notifications: ' + error);
+      });
+    }
+
+    function handleChangedValue(event) {
+      //let value = event.target.value.getUint8(3);
+      //let value = event.target.value.byteLength;
+	  let value = event.target.value;
+      const decoder = new TextDecoder("UTF-8");
+	  //console.log('Text is ' + value);
+	  //document.getElementById("received").value = value;
+	  //document.getElementById("adc1").innerHTML = value;
+	  var completestring = decoder.decode(value);
+	  var stringarray = completestring.split(',');
+	  adc1_value = stringarray[0];
+	  adc2_value = stringarray[1];
+	  battery_value =stringarray[2];
+      //console.log('Text is ' + stringarray);
+	  document.getElementById("received").value = completestring;
+	  document.getElementById("adc1val").innerHTML = adc1_value;
+	  document.getElementById("adc2val").innerHTML = adc2_value;
+	  document.getElementById("batteryval").innerHTML = battery_value + "%";
+	  updatescreen();
+    }
+	
+	function start() {
+      gattCharacteristic.startNotifications()
+      .then(_ => {
+        writesysstat('Start Reading...');
+
+		document.querySelector('#read').disabled = true;
+		document.querySelector('#start').disabled = true;
+        document.querySelector('#stop').disabled = false;
+      })
+      .catch (error => {
+        writesysstat('[ERROR] Start: ' + error);
+      });
+    }
+    
+    function stop() {
+      gattCharacteristic.stopNotifications()
+      .then(_ => {
+        writesysstat('Stopped Reading...');
+
+		document.querySelector('#read').disabled = false;
+        document.querySelector('#start').disabled = false;
+        document.querySelector('#stop').disabled = true;
+      })
+      .catch (error => {
+        writesysstat('[ERROR] Stop: ' + error);
+      });
+    }
+	
+	function updatescreen() {
+		   //gather the bullet element information
+		adc1bstate = document.getElementById("adc1state");
+		adc1bstat = document.getElementById("adc1status");
+		adc2bstate = document.getElementById("adc2state");
+		adc2bstat = document.getElementById("adc2status");
+		batterybstate = document.getElementById("batterystate");
+		batterybstat = document.getElementById("batterystatus");
+		adc1bstate = document.getElementById("adc1state");
+		adc1bstat = document.getElementById("adc1status");
+		adc2bstate = document.getElementById("adc2state");
+		adc2bstat = document.getElementById("adc2status");
+		batterybstate = document.getElementById("batterystate");
+		batterybstat = document.getElementById("batterystatus");
+	
+		   //update adc1 
+		if(adc1_value != 0) {
+			adc1newstatecolor = green;
+			adc1newstatuscolor = green;
+			document.getElementById("adc1err").innerHTML = "";
+		}
+		else {
+			adc1newstatecolor = red;
+			adc1newstatuscolor = red;
+			document.getElementById("adc1err").innerHTML = "ADC is not working or not Connected";
+		}
+	   
+		   //update adc2
+		if(adc2_value != 0) {
+			adc2newstatecolor = green;
+			adc2newstatuscolor = green;
+			document.getElementById("adc2err").innerHTML = "";
+		}
+		else {
+			adc2newstatecolor = red;
+			adc2newstatuscolor = red;
+			document.getElementById("adc2err").innerHTML = "ADC is not working or not Connected";
+		}
+	   
+		   //update battery
+		if(battery_value > 69) {
+			batterynewstatecolor = green;
+			batterynewstatuscolor = green;
+			document.getElementById("batteryerr").innerHTML = "Battery Status is good"
+		} else if (battery_value >29 && battery_value < 70) {
+			batterynewstatecolor = yellow;
+			batterynewstatuscolor = yellow;
+			document.getElementById("batteryerr").innerHTML = "Warning! battery getting low."
+		} else {
+			batterynewstatecolor = red;
+			batterynewstatuscolor = red;
+			document.getElementById("batteryerr").innerHTML = "Warning! battery is LOW...."
+		}
+		   
+		   //update the bullet colors on the screen
+		adc1bstate.classList.replace(adc1statecolor, adc1newstatecolor);
+		adc1bstat.classList.replace(adc1statuscolor, adc1newstatuscolor);
+		adc2bstate.classList.replace(adc2statecolor, adc2newstatecolor);
+		adc2bstat.classList.replace(adc2statuscolor, adc2newstatuscolor);
+		batterybstate.classList.replace(batterystatecolor, batterynewstatecolor);
+		batterybstat.classList.replace(batterystatuscolor, batterynewstatuscolor);
+	   
+	       //copy new values to hold values
+		adc1statecolor = adc1newstatecolor;
+		adc1statuscolor = adc1newstatuscolor;
+		adc2statecolor = adc2newstatecolor;
+		adc2statuscolor = adc2newstatuscolor;
+		batterystatecolor = batterynewstatecolor;
+		batterystatuscolor = batterynewstatuscolor;
+	}
+	
+	   //Get the current date and time and update the controller over bluetooth
+	function sendTimer() {
+		const d = new Date();
+		var curdate = d.toLocaleDateString();
+		var curtime = d.toLocaleTimeString();
+		document.getElementById("curdate").innerHTML = curdate;
+		document.getElementById("curtime").innerHTML = curtime;
+		if(connectionstarted) {
+			   //********** Send the Data over Bluetooth **********
+			document.getElementById("sent").value = curdate + "," + curtime;
+		}
+	}
+	
+	function writesysstat(sysstatout) {
+		document.getElementById("sysstat").value = sysstatout;
+	}
+  </script>
+</html>
